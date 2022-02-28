@@ -100,15 +100,12 @@ class Plot_image(Qt.QMainWindow):
         self.state_slit=0 # Отображение
         self.height=len(self.Z) # Высота щели в Pix
         # Для вычисления ширины щели
-        binning=self.h['BINNING'] # бининг по оси x
-        n=binning.index('x')
-        n_p=float(binning[0:n]) # 
-        width_slit=self.h['SLITWID'] # ширина щели в "
+        width_slit=float(self.h['SLITWID']) # ширина щели в "
         scale=self.h['IMSCALE'] # масштаб по оси x в "/Pix
         n=scale.index('x')
         scale=float(scale[0:n]) #
         #
-        self.width=width_slit/scale/n_p # Ширина щели в Pix
+        self.width=width_slit/scale # Ширина щели в Pix
 
     # Построение основного изображения
     def image(self):
@@ -125,6 +122,8 @@ class Plot_image(Qt.QMainWindow):
             self.ax.add_patch(rect)
         im=self.ax.imshow(self.Z,cmap=self.color, vmin=self.min_v, vmax=self.max_v,norm=self.norm_color, origin='lower')
         cb=self.figure.colorbar(im,ax=self.ax)
+        self.ax.set_xlabel("x, Pix")
+        self.ax.set_ylabel("y, Pix")
         self.canvas.draw()
 
     # Отображение щели
@@ -144,6 +143,7 @@ class Plot_image(Qt.QMainWindow):
             self.X.append(i)
             self.Y.append(self.Z[j][i])
         self.ax2.plot(self.X,self.Y,'k')
+        self.ax2.set_ylabel("value")
         self.canvas2.draw()
         
     # Отображение координат на рисунке
