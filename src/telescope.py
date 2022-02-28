@@ -1,20 +1,17 @@
 from math import sin, cos, asin, acos, radians, degrees, atan2, pi
-#import requests
+
 from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import astropy.units as u
-#from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz
 import time
-from S0 import calculate_S0
+from siderealtimeS0 import calculate_S0
+from numpy import sign
 
-#import astroplan
-#astroplan.test()
-#from astroplan import download_IERS_A
-#download_IERS_A()
+import logger as log
 
-#перевод градусы-минуты-секунды в градусы
+#перевод "градусы-минуты-секунды" в "градусы"
 def dms_to_d(d,m,s):    
     if d < 0:        
         d = d - m/60 - s/3600
@@ -22,7 +19,7 @@ def dms_to_d(d,m,s):
         d = d + m/60 + s/3600    
     return d
     
-#перевод градусы в градусы-минуты-секунды    
+#перевод "градусы" в "градусы-минуты-секунды"    
 def d_to_dms(A):
     A=float(A)
     if A>=0:
@@ -31,17 +28,11 @@ def d_to_dms(A):
         A*=-1
         return (-int(A), int(A*60%60), round(A*60%60*60%60,2))
 
-#считает звездное время s     
-def calculate_s():
-    longitude = 59.55
+#считает звездное время s, [S0] = h, [T] = h     
+def calculate_s(S0, T): 
+    longitude = dms_to_d(59, 32, 50.18)
     K = 366.2422/365.2422
-        
-    S0 = (9, 59, 38.1775) #hms
-    S0 = dms_to_d(S0[0], S0[1], S0[2]) #h
-        
-    T = (22, 0, 0) #hms
-    T = dms_to_d(T[0], T[1], T[2]) #h
-        
+    
     s = S0 - longitude*dms_to_d(0, 3, 56.56)/360 + T*K #h
     if s >= 24:
         s-=24
@@ -51,13 +42,14 @@ def calculate_s():
 
 
 class Telescope:
-    latitude = 57.03 #deg
-    longitude = 59.55 #deg
+    latitude = dms_to_d(57, 2, 12.1) #deg
+    longitude = dms_to_d(59, 32, 50.18) #deg
     v_max = 6 # deg/s - максимальная скорость вращения телескопа по осям
     
-    def __init__(self, alt = 10, az = 0):
+    def __init__(self, alt = 15, az = 180, mode = 'A'):
         self.__alt = alt
         self.__az = az
+        self.__mode = mode
     
     @property    
     def alt(self):
@@ -65,10 +57,10 @@ class Telescope:
     
     @alt.setter
     def alt(self, h):
-        if 10 <= h <= 80:
+        if 15 <= h <= 85:
             self.__alt = h
         else:
-            raise ValueError
+            raise ValueError  #####error
     
     @property        
     def az(self):
@@ -76,10 +68,29 @@ class Telescope:
     
     @az.setter
     def az(self, A):
-        if 0 <= A < 360:
+        if 0 <= A <= 300 and self.__mode == 'A':
             self.__az = A
+        elif (70 <= A < 360 or 0 <= A <=10) and self.__mode == 'B':
+            self.__az = A
+        elif 10 < A < 70 and self.__mode == 'B':
+            raise ValueError #print ("ModeError") #####error
+        elif 300 < A < 360 and self.__mode == 'A':
+            raise ValueError #print ("ModeError") #####error
         else:
-            raise ValueError
+            raise ValueError  #####error
+            
+    @property        
+    def mode(self):
+        return self.__mode
+    
+    @mode.setter
+    def mode(self, string): ####нельзя использовать для смены режима!! см. change_mode(self)
+        if string == 'A':
+            self.__mode = 'A'
+        elif string == 'B':
+            self.__mode = 'B'
+        else:
+            raise ValueError   #####error
             
     
     #считает прямое восхождение и склонение точки (h, A) в момент звездного времени s
@@ -103,44 +114,124 @@ class Telescope:
         
         return (self.ra, self.dec)
         
-
-    def move_to_star(self, star, t0):
-        s = calculate_s()  ##добавить t0 - время начала движения
+    
+    #наведение на звезду, date - объект типа time.struct_time, время начала наведения (момент вызова функции)
+    def move_to_star(self, star, date):
+        S0 = calculate_S0(date)
+        S0 = dms_to_d(S0[0], S0[1], S0[2])
+        T = dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
+        s = calculate_s(S0, T)
         h_star, A_star = star.eq_to_hor(s)
         
         while abs(star.alt-self.alt)>0.1/3600 or abs(star.az-self.az)>0.1/3600:
             h_star_in1sec, A_star_in1sec = star.eq_to_hor(s+1/3600)
             
-            d_h = abs(self.alt - h_star_in1sec)
-            d_A = abs(self.az - A_star_in1sec)
+            d_h = h_star_in1sec - self.alt
+            d_A = A_star_in1sec - self.az
             
-            if d_h <= self.v_max and d_A <= self.v_max:
+            if abs(d_h) <= self.v_max and abs(d_A) <= self.v_max:
                 self.alt = h_star_in1sec
                 self.az = A_star_in1sec
     
-            if d_h <= self.v_max and d_A > self.v_max:
+            if abs(d_h) <= self.v_max and abs(d_A) > self.v_max:
                 self.alt = h_star_in1sec
-                self.az += self.v_max
+                self.az = self.az + sign(d_A)*self.v_max
                 
-            if d_h > self.v_max and d_A <= self.v_max:
-                self.alt += self.v_max
+            if abs(d_h) > self.v_max and abs(d_A) <= self.v_max:
+                self.alt = self.alt + sign(d_h)*self.v_max
                 self.az = A_star_in1sec            
             
-            if d_h > self.v_max and d_A > self.v_max:
-                self.alt += self.v_max
-                self.az += self.v_max
+            if abs(d_h) > self.v_max and abs(d_A) > self.v_max:
+                self.alt = self.alt + sign(d_h)*self.v_max
+                self.az = self.az + sign(d_A)*self.v_max
                 
             s+=1/3600
             time.sleep(1)
-            #print(star.alt, star.az)   ###тут тестить
+            #print(star.alt, star.az)   ###info
             #print(self.alt, self.az)
             
+    
+    #ведение телескопа с момента времени date в течение tau. date - объект time.struct_time, tau в секундах(?)
+    def guidance(self, star, date, tau):
+        S0 = calculate_S0(date)
+        S0 = dms_to_d(S0[0], S0[1], S0[2])
+        T = dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
+        s = calculate_s(S0, T)
         
+        for i in range(tau):
+            h_star, A_star = star.eq_to_hor(s)
+            self.alt = h_star
+            self.az = A_star
+            s+=1/3600
+            time.sleep(1)
+            
+            #print(star.alt, star.az)   ###info
+            #print(self.alt, self.az)
+            
+    #меняет режим телескопа
+    def change_mode(self):
+        if self.mode == 'A':
+            if 70 <= self.az <= 300:
+                self.mode = 'B'
+            elif 0 <= self.az < 70:                
+                while self.az < 70-self.v_max:
+                    self.az += self.v_max
+                    time.sleep(1)
+                    #print (self.az) ###info
+                self.az = 70
+                time.sleep(1)
+                #print (self.az) ###info
+                self.mode = 'B'
+            else:
+                raise ValueError #print ('ChangeModeError') ###error
+                
+        elif self.mode == 'B':
+            if 70 <= self.az <= 300:
+                self.mode = 'A'
+            elif 300 < self.az < 360 or 0 <= self.az <= 10:
+                if self.az <= 10:
+                    while self.az >= self.v_max:
+                        self.az -= self.v_max
+                        time.sleep(1)
+                        #print (self.az) ###debug
+                    self.az = self.az + 360 - self.v_max
+                    time.sleep(1)  
+                    #print (self.az) ###debug
+                while self.az > 300+self.v_max:
+                    self.az -= self.v_max
+                    time.sleep(1)
+                    #print (self.az) ###debug
+                self.az = 300
+                time.sleep(1)
+                #print (self.az) ###debug
+                self.mode = 'A'
+            else:
+                raise ValueError #print ('ChangeModeError')  ###error
+                
+    
+    def parking(self):
+        d_A = 180 - self.az
+        d_h = 15 - self.alt
+        while abs(d_A) > self.v_max or abs(d_h) > self.v_max:
+            if abs(d_A) > self.v_max:
+                self.az += np.sign(d_A) * self.v_max
+                d_A = 180 - self.az
+            if abs(d_h) > self.v_max:
+                self.alt += np.sign(d_h) * self.v_max
+                d_h = 15 - self.alt
+            #print(self.az, self.alt) ###debug
+            time.sleep(1)
+        self.az = 180
+        self.alt = 15
+        #print(self.az, self.alt) ###debug
+        time.sleep(1)
+                
+            
     
 
 class Star:
-    latitude = 57.03 #deg
-    longitude = 59.55 #deg
+    latitude = dms_to_d(57, 2, 12.1) #deg
+    longitude = dms_to_d(59, 32, 50.18) #deg
         
     def __init__(self, ra = 0, dec = 0):        
         self.ra = ra #deg        
@@ -166,30 +257,5 @@ class Star:
         self.az = degrees(A)
         
         return (self.alt, self.az)
-
-        
-
-
-
-        
-#t = Time(datetime(2002, 2, 21, 0, 0, 0), scale='utc')
-#print(t.sidereal_time('mean', 'greenwich'))    
-        
-#observing_location = EarthLocation(lat=57.03*u.deg, lon=59.55*u.deg)
-#observing_time = Time('2012-7-12 23:00:00', scale='utc', location=observing_location)
-#LST = observing_time.sidereal_time('mean')
-#print(LST)
-
-'''     тут тестить
-t = Telescope()
-star = Star(70, 40)
-s = calculate_s()
-
-print(star.eq_to_hor(s))
-print(t.alt, t.az)
-
-t.move_to_star(star, 22)
-'''
-
-
-
+    
+    
