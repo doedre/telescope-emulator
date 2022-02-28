@@ -257,6 +257,5 @@ class Star:
         self.az = degrees(A)
         
         return (self.alt, self.az)
-
-
-
+    
+    
