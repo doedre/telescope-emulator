@@ -1,21 +1,17 @@
 from math import sin, cos, asin, acos, radians, degrees, atan2, pi
-#import requests
+
 from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import astropy.units as u
-#from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz
 import time
 from siderealtimeS0 import calculate_S0
 from numpy import sign
 
-#import astroplan
-#astroplan.test()
-#from astroplan import download_IERS_A
-#download_IERS_A()
+import logger as log
 
-#перевод градусы-минуты-секунды в градусы
+#перевод "градусы-минуты-секунды" в "градусы"
 def dms_to_d(d,m,s):    
     if d < 0:        
         d = d - m/60 - s/3600
@@ -23,7 +19,7 @@ def dms_to_d(d,m,s):
         d = d + m/60 + s/3600    
     return d
     
-#перевод градусы в градусы-минуты-секунды    
+#перевод "градусы" в "градусы-минуты-секунды"    
 def d_to_dms(A):
     A=float(A)
     if A>=0:
@@ -50,7 +46,7 @@ class Telescope:
     longitude = dms_to_d(59, 32, 50.18) #deg
     v_max = 6 # deg/s - максимальная скорость вращения телескопа по осям
     
-    def __init__(self, alt = 15, az = 0, mode = 'A'):
+    def __init__(self, alt = 15, az = 180, mode = 'A'):
         self.__alt = alt
         self.__az = az
         self.__mode = mode
@@ -64,7 +60,7 @@ class Telescope:
         if 15 <= h <= 85:
             self.__alt = h
         else:
-            raise ValueError
+            raise ValueError  #####error
     
     @property        
     def az(self):
@@ -76,21 +72,25 @@ class Telescope:
             self.__az = A
         elif (70 <= A < 360 or 0 <= A <=10) and self.__mode == 'B':
             self.__az = A
+        elif 10 < A < 70 and self.__mode == 'B':
+            raise ValueError #print ("ModeError") #####error
+        elif 300 < A < 360 and self.__mode == 'A':
+            raise ValueError #print ("ModeError") #####error
         else:
-            raise ValueError
+            raise ValueError  #####error
             
     @property        
     def mode(self):
         return self.__mode
     
     @mode.setter
-    def mode(self, string):
+    def mode(self, string): ####нельзя использовать для смены режима!! см. change_mode(self)
         if string == 'A':
             self.__mode = 'A'
         elif string == 'B':
             self.__mode = 'B'
         else:
-            raise ValueError   
+            raise ValueError   #####error
             
     
     #считает прямое восхождение и склонение точки (h, A) в момент звездного времени s
@@ -147,7 +147,7 @@ class Telescope:
                 
             s+=1/3600
             time.sleep(1)
-            #print(star.alt, star.az)   ###тут тестить
+            #print(star.alt, star.az)   ###info
             #print(self.alt, self.az)
             
     
@@ -165,9 +165,68 @@ class Telescope:
             s+=1/3600
             time.sleep(1)
             
-            #print(star.alt, star.az)   ###тут тестить
+            #print(star.alt, star.az)   ###info
             #print(self.alt, self.az)
-        
+            
+    #меняет режим телескопа
+    def change_mode(self):
+        if self.mode == 'A':
+            if 70 <= self.az <= 300:
+                self.mode = 'B'
+            elif 0 <= self.az < 70:                
+                while self.az < 70-self.v_max:
+                    self.az += self.v_max
+                    time.sleep(1)
+                    #print (self.az) ###info
+                self.az = 70
+                time.sleep(1)
+                #print (self.az) ###info
+                self.mode = 'B'
+            else:
+                raise ValueError #print ('ChangeModeError') ###error
+                
+        elif self.mode == 'B':
+            if 70 <= self.az <= 300:
+                self.mode = 'A'
+            elif 300 < self.az < 360 or 0 <= self.az <= 10:
+                if self.az <= 10:
+                    while self.az >= self.v_max:
+                        self.az -= self.v_max
+                        time.sleep(1)
+                        #print (self.az) ###debug
+                    self.az = self.az + 360 - self.v_max
+                    time.sleep(1)  
+                    #print (self.az) ###debug
+                while self.az > 300+self.v_max:
+                    self.az -= self.v_max
+                    time.sleep(1)
+                    #print (self.az) ###debug
+                self.az = 300
+                time.sleep(1)
+                #print (self.az) ###debug
+                self.mode = 'A'
+            else:
+                raise ValueError #print ('ChangeModeError')  ###error
+                
+    
+    def parking(self):
+        d_A = 180 - self.az
+        d_h = 15 - self.alt
+        while abs(d_A) > self.v_max or abs(d_h) > self.v_max:
+            if abs(d_A) > self.v_max:
+                self.az += np.sign(d_A) * self.v_max
+                d_A = 180 - self.az
+            if abs(d_h) > self.v_max:
+                self.alt += np.sign(d_h) * self.v_max
+                d_h = 15 - self.alt
+            #print(self.az, self.alt) ###debug
+            time.sleep(1)
+        self.az = 180
+        self.alt = 15
+        #print(self.az, self.alt) ###debug
+        time.sleep(1)
+                
+            
     
 
 class Star:
@@ -198,22 +257,6 @@ class Star:
         self.az = degrees(A)
         
         return (self.alt, self.az)
-
-        
-
-
-
-        
-#    тут тестить
-'''
-t = Telescope()
-star = Star(70, 40)
-
-date = time.localtime(time.time())
-t.move_to_star(star, date)
-date = time.localtime(time.time())
-t.guidance(star, date, 5)
-'''
 
 
 
