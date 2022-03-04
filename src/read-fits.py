@@ -60,8 +60,8 @@ def get_weather(weather, focus): # берём информацию о погод
     return mirrtemp, dometemp, outtemp, wind, clouds, pressure, seeing 
 
 # считывание fits-файла, возвращает отдельно данные (которые потом нужно переделать под экспозицию) и header
-def read_fits(path, file_type, exp_time):
-    name = path + file_type + '.fts'
+def read_fits(mode, file_type, exp_time):
+    name = file_type + mode + '.fts'
     hdu = fits.open(name)
     image_data = hdu[0].data
     hdr = hdu[0].header
@@ -115,7 +115,7 @@ def write_fits(countfile, image_data, hdr, path, file_type, exp_time, star, sid_
     hdu.header['CLOUDS'] = clouds
     hdu.header['PRESSURE'] = pressure
     hdu.header['MODE'] = '\'' + mode + '\''
-
+    hdu.writeto(name)
 
 
 
