@@ -1,0 +1,7 @@
+TYPE	MIRRTEMP	DOMETEMP	OUTTEMP	WIND	CLOUDS	PRESSURE	SEEING
+bad	12.	9.5	8.4	3.5	0	592.9	4.0
+bad_auto	12.	9.5	8.4	3.5	0	592.9	3.8
+good	6.3	5.9	5.1	1.8	0	598.	1.7
+good_auto	6.3	5.9	5.1	1.8	0	598.	1.5
+normal	-0.9	-9.7	-10.5	3.7	0	592.6	2.4
+normal_auto	-0.9	-9.7	-10.5	3.7	0	592.6	2.2
