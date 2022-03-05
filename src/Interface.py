@@ -161,7 +161,15 @@ class FirstTab(QWidget):
         return self.Focus
 
     def Get_weather(self):
-        return self.Combo_weather.currentText()
+        weather = self.Combo_weather.currentText()
+        head_weather = " "
+        if weather == "Normal":
+            head_weather = "normal"
+        if weather == "Good":
+            head_weather = "good"
+        if weather == "Bad":
+            head_weather = "bad"
+        return head_weather
 
     def Get_filename(self):
         mode = " "
