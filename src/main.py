@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-import logger as log
+import logging as log
 
 def main():
     # Parse command line arguments

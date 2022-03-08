@@ -1,22 +1,15 @@
 import logging
 
-# Global formatter for logging
-c_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-# Mutable global with logging level
-m_level = 'INFO'
-
-# Used to set the custom path for log file
-def set_log_path(log_path):
+# Set debug level and path for log file.
+def setup_logger(level, log_path):
+    c_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler = logging.FileHandler(filename=log_path)
     file_handler.setFormatter(c_formatter)
-    logging.getLogger().setLevel(m_level)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(c_formatter)
+    logging.getLogger().setLevel(level)
     logging.getLogger().addHandler(file_handler)
-
-# Includes debugging in log file
-def set_debug_level():
-    global m_level
-    m_level = 'DEBUG'
-    logging.getLogger().setLevel('DEBUG')
+    logging.getLogger().addHandler(stream_handler)
 
 # Function for debug messages print. Acts like `print()` function, but prints
 # the output to the specified log file.
