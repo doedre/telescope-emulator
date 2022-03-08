@@ -2,7 +2,9 @@ import sys
 from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QTabWidget
 from PyQt5.QtWidgets import QGridLayout, QLabel, QMessageBox, QRadioButton
 from PyQt5.QtWidgets import QPushButton, QLineEdit, QVBoxLayout, QComboBox
+from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtGui import QPixmap
+from numpy import loadtxt
 
 class Interface(QWidget):
 
@@ -35,7 +37,7 @@ class FirstTab(QWidget):
         #Weather
         Text_weather = QLabel("Set weather conditions")
         self.Combo_weather = QComboBox()
-        self.Combo_weather.addItems(["Perfect"," Good", "Bad"])
+        self.Combo_weather.addItems(["Normal", "Good", "Bad"])
         #Object
         Text_object = QLabel("Set object coordinates in degree float d. format, or open file.\nFile may content more than one object")
         Text_RA = QLabel("Right Ascension")
@@ -68,16 +70,24 @@ class FirstTab(QWidget):
         #Specially created shitwidget for taking place
         Void = QLabel("")
         Border = QLabel("")
-        #Image
+        
+        #Image part, for now disabled
         #Frame = QPixmap("/home/evgeny/TEI/example.jpg")
         #FrameLbl = QLabel(self)
         #FrameLbl.setPixmap(Frame)
+        
         #All important info about current task and the label to display it
-        #Info = "Current task:\nObject: " + str(self.Field_RA.text()) + " ; " + str(self.Field_Dec.text()) + "\nTelescope mode: " + str(self.Combo_mode.currentText()) + "\nExposure time: " + str(self.Field_exposure.text())
         self.Current = QLabel()
-        #self.Current.setFont(14)
+        
+
+        #Logic part. Button functions, vaulue retrieving methods etc
+        self.Focus = False
         Button_start.clicked.connect(self.Click_start)
         Button_park.clicked.connect(self.Click_park)
+        Button_focus.clicked.connect(self.Click_focus)
+        Button_move.clicked.connect(self.Click_move)
+        Button_object.clicked.connect(self.Open_file)
+
 
         #Main outer layout
         Layout = QGridLayout()
@@ -123,7 +133,7 @@ class FirstTab(QWidget):
         self.setLayout(Layout)
         
     #Methods
-    #Method for showing current task after clicking Start button. This method also might contain target frame pop-out process
+    #Methods for showing current task after clicking buttons. These methods also might contain target frame pop-out processes
     def Click_start(self):
        Info = "Current task:\nObject (float d.): " + str(self.Field_RA.text()) + " ; " + str(self.Field_Dec.text()) + "\nTelescope mode: " 
        Info += str(self.Combo_mode.currentText()) + "\nExposure time: " + str(self.Field_exposure.text()) + " sec " + "\nGuidance mode: " 
@@ -135,6 +145,54 @@ class FirstTab(QWidget):
     def Click_park(self):
         Info = "Current task: Parking" + "\nGuidance mode: " + str(self.Combo_guide.currentText())
         self.Current.setText(Info)
+
+    def Click_focus(self):
+        Info = "Current task:\nFocusing"
+        self.Current.setText(Info)
+        self.Focus = True
+
+    def Click_move(self):
+        Info = "Current task:\nMoving to coordinates " + str(self.Field_RA.text()) + " ; " + str(self.Field_Dec.text())
+        #Need current telescope coordinates. Add them here
+        #Info += "Current coordinates: " + 
+        self.Current.setText(Info)
+
+    def Get_focus(self):
+        return self.Focus
+
+    def Get_weather(self):
+        weather = self.Combo_weather.currentText()
+        head_weather = " "
+        if weather == "Normal":
+            head_weather = "normal"
+        if weather == "Good":
+            head_weather = "good"
+        if weather == "Bad":
+            head_weather = "bad"
+        return head_weather
+
+    def Get_filename(self):
+        mode = " "
+        file_type = " "
+        if str(self.Combo_mode.currentText()) == "Imaging":
+            mode = "image"
+        if str(self.Combo_mode.currentText()) == "Spectrum":
+            mode = "spectra"
+        if str(self.Combo_calibration.currentText()) == "None":
+            file_type = "obj"
+        if str(self.Combo_calibration.currentText()) == "Calibration lamp":
+            file_type = "neon"
+        if str(self.Combo_calibration.currentText()) == "Flat field":
+            file_type = "flat"
+
+        return [mode, file_type]
+
+    def Open_file(self):
+        filepath = QFileDialog.getOpenFileName(self, "Open file")[0]
+        data_RA, data_Dec = loadtxt(filepath, usecols = (0, 1), unpack = True)
+        self.Field_RA.setText(str(data_RA[0]))
+        self.Field_Dec.setText(str(data_Dec[0]))
+
 
 
 ### Main Application ###
