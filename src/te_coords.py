@@ -1,41 +1,42 @@
-from math import sin, cos, asin, acos, radians, degrees, atan2, pi
+from PySide6.QtCore import QObject, Signal, Slot
+from multiprocessing import Process, Lock
 
+from math import *
 from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import astropy.units as u
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz
 import time
-from siderealtimeS0 import calculate_S0
 from numpy import sign
 
 import logger as log
 
-#перевод "градусы-минуты-секунды" в "градусы"
-def dms_to_d(d,m,s):    
+# перевод "градусы-минуты-секунды" в "градусы"
+def dms_to_d(d: int, m: int, s: float) -> float:    
     if d < 0:        
-        d = d - m/60 - s/3600
+        d = d - m / 60 - s / 3600
     else:
-        d = d + m/60 + s/3600    
+        d = d + m / 60 + s / 3600    
     return d
     
-#перевод "градусы" в "градусы-минуты-секунды"    
-def d_to_dms(A):
-    A=float(A)
-    if A>=0:
+# перевод "градусы" в "градусы-минуты-секунды"    
+def d_to_dms(A: float):
+    A = float(A)
+    if A >= 0:
         return (int(A), int(A*60%60), round(A*60%60*60%60,2))
     else:
-        A*=-1
+        A *= -1
         return (-int(A), int(A*60%60), round(A*60%60*60%60,2))
 
-#считает звездное время s, [S0] = h, [T] = h     
-def calculate_s(S0, T): 
+# считает звездное время s, [S0] = h, [T] = h     
+def calculate_s(S0: float, T: float) -> float: 
     longitude = dms_to_d(59, 32, 50.18)
-    K = 366.2422/365.2422
+    K = 366.2422 / 365.2422
     
-    s = S0 - longitude*dms_to_d(0, 3, 56.56)/360 + T*K #h
+    s = S0 - longitude * dms_to_d(0, 3, 56.56) / 360 + T * K #h
     if s >= 24:
-        s-=24
+        s -= 24
             
     return s # 0 <= s < 24
 
@@ -49,15 +50,15 @@ def calculate_S0(date):  #можно заменить date на (число, м�
     month = [31,28,31,30,31,30,31,31,30,31,30,31]
     
     if im != 1:
-        tmp = math.floor(iyear/4)
-        i=4*tmp
+        tmp = floor(iyear/4)
+        i = 4 * tmp
         if iyear == i:
             month[1] = 29
         for j in month[:im-1]:
             iday += j
     
     iy = iyear - 1900
-    iday = math.floor((iday-1)+(iy-1)/4)
+    iday = floor((iday-1)+(iy-1)/4)
     
     t=iday + iy*365.0
     t = (t+0.5)/36525.0
@@ -69,7 +70,7 @@ def calculate_S0(date):  #можно заменить date на (число, м�
     while sm > 86400:
         sm = sm - 86400.0
     
-    p = math.pi/180.0/3600.0 
+    p = pi/180.0/3600.0 
     
     e = p*(84381.448 - 46.8150*t - 0.00059*t*t + 0.0018130*t*t*t) 
     
@@ -79,132 +80,134 @@ def calculate_S0(date):  #можно заменить date на (число, м�
     m = p*(1287099.804 +  99.0*r*t+1292581.2240*t -  0.5770*t*t - 0.0120*t*t*t) 
     l = p*( 485866.7330+1325.0*r*t + 715922.633*t + 31.3100*t*t+ 0.0640*t*t*t) 
     
-    pl =  -(17.19960 + 0.017420*t)*math.sin(q) 
+    pl =  -(17.19960 + 0.017420*t)*sin(q) 
     
-    pl = pl + (0.20620 + 0.000020*t)*math.sin(2.0*q) 
-    pl = pl +   0.00460            *math.sin(q+2.0*f-2.0*l) 
-    pl = pl +   0.00110            *math.sin(2.0*(l-f)) 
-    pl = pl -   0.00030            *math.sin(2.0*(q+f-l)) 
-    pl = pl-   0.00030            * math.sin (l-m-d) 
-    pl = pl-   0.00020            * math.sin (q-2.0*d+2.0*f-2.0*m) 
-    pl = pl+   0.00010            * math.sin (q-2.0*f+2.0*l) 
-    pl = pl-( 1.31870+ 0.000160*t)* math.sin (2.0*(q-d+f)) 
-    pl = pl+(  0.14260-0.000340*t)* math.sin (m) 
-    pl = pl-(  0.05170-0.000120*t)* math.sin (2.0*q-2.0*d+2.0*f+m) 
-    pl = pl+(  0.02170-0.000050*t)* math.sin (2.0*q-2.0*d+2.0*f-m) 
-    pl = pl+(  0.01290+0.000010*t)* math.sin (q-2.0*d+2.0*f) 
-    pl = pl+   0.00480            * math.sin (2.0*(l-d)) 
-    pl = pl-   0.00220            * math.sin (2.0*(f-d)) 
-    pl = pl+(  0.00170-0.000010*t)* math.sin (2.0*m) 
-    pl = pl-   0.00150            * math.sin (q+m) 
-    pl = pl-(  0.00160-0.000010*t)* math.sin (2.0*(q-d+f+m)) 
-    pl = pl-   0.00120            * math.sin (q-m) 
-    pl = pl-   0.00060            * math.sin (q+2.0*d-2.0*l) 
-    pl = pl-   0.00050            * math.sin (q-2.0*d+2.0*f-m) 
-    pl = pl+   0.00040            * math.sin (q-2.0*d+2.0*l) 
-    pl = pl+   0.00040            * math.sin (q-2.0*d+2.0*f+m) 
-    pl = pl-   0.00040            * math.sin (l-d) 
-    pl = pl+   0.00010            * math.sin (2.0*l+m-2.0*d) 
-    pl = pl+   0.00010            * math.sin (q+2.0*d-2.0*f) 
-    pl = pl-   0.00010            * math.sin (2.0*d-2.0*f+m) 
-    pl = pl+   0.00010            * math.sin (2.0*q+m) 
-    pl = pl+   0.00010            * math.sin (q+d-l) 
-    pl = pl-   0.00010            * math.sin (m+2.0*f-2.0*d) 
+    pl = pl + (0.20620 + 0.000020*t)*sin(2.0*q) 
+    pl = pl +   0.00460            *sin(q+2.0*f-2.0*l) 
+    pl = pl +   0.00110            *sin(2.0*(l-f)) 
+    pl = pl -   0.00030            *sin(2.0*(q+f-l)) 
+    pl = pl-   0.00030            * sin (l-m-d) 
+    pl = pl-   0.00020            * sin (q-2.0*d+2.0*f-2.0*m) 
+    pl = pl+   0.00010            * sin (q-2.0*f+2.0*l) 
+    pl = pl-( 1.31870+ 0.000160*t)* sin (2.0*(q-d+f)) 
+    pl = pl+(  0.14260-0.000340*t)* sin (m) 
+    pl = pl-(  0.05170-0.000120*t)* sin (2.0*q-2.0*d+2.0*f+m) 
+    pl = pl+(  0.02170-0.000050*t)* sin (2.0*q-2.0*d+2.0*f-m) 
+    pl = pl+(  0.01290+0.000010*t)* sin (q-2.0*d+2.0*f) 
+    pl = pl+   0.00480            * sin (2.0*(l-d)) 
+    pl = pl-   0.00220            * sin (2.0*(f-d)) 
+    pl = pl+(  0.00170-0.000010*t)* sin (2.0*m) 
+    pl = pl-   0.00150            * sin (q+m) 
+    pl = pl-(  0.00160-0.000010*t)* sin (2.0*(q-d+f+m)) 
+    pl = pl-   0.00120            * sin (q-m) 
+    pl = pl-   0.00060            * sin (q+2.0*d-2.0*l) 
+    pl = pl-   0.00050            * sin (q-2.0*d+2.0*f-m) 
+    pl = pl+   0.00040            * sin (q-2.0*d+2.0*l) 
+    pl = pl+   0.00040            * sin (q-2.0*d+2.0*f+m) 
+    pl = pl-   0.00040            * sin (l-d) 
+    pl = pl+   0.00010            * sin (2.0*l+m-2.0*d) 
+    pl = pl+   0.00010            * sin (q+2.0*d-2.0*f) 
+    pl = pl-   0.00010            * sin (2.0*d-2.0*f+m) 
+    pl = pl+   0.00010            * sin (2.0*q+m) 
+    pl = pl+   0.00010            * sin (q+d-l) 
+    pl = pl-   0.00010            * sin (m+2.0*f-2.0*d) 
     
-    ps =   -(  0.22740+0.000020*t)* math.sin (2.0*(q+f)) 
-    ps = ps+(  0.07120+0.000010*t)* math.sin (l) 
-    ps = ps-(  0.03860+0.000040*t)* math.sin (q+2.0*f) 
-    ps = ps-   0.03010            * math.sin (2.0*q+2.0*f+l) 
-    ps = ps-   0.01580            * math.sin (l-2.0*d) 
-    ps = ps+   0.01230            * math.sin (2.0*q+2.0*f-l) 
-    ps = ps+   0.00630            * math.sin (2.0*d) 
-    ps = ps+(  0.00630+0.000010*t)* math.sin (q+l) 
-    ps = ps-(  0.00580+0.000010*t)* math.sin (q-l) 
-    ps = ps-   0.00590            * math.sin (2.0*q+2.0*d+2.0*f-l) 
-    ps = ps-   0.00510            * math.sin (q+2.0*f+l) 
-    ps = ps-   0.00380            * math.sin (2.0*(q+d+f)) 
-    ps = ps+   0.00290            * math.sin (2.0*l) 
-    ps = ps+   0.00290            * math.sin (2.0*q-2.0*d+2.0*f+l) 
-    ps = ps-   0.00310            * math.sin (2.0*(q+f+l)) 
-    ps = ps+   0.00260            * math.sin (2.0*f) 
-    ps = ps+   0.00210            * math.sin (q+2.0*f-l) 
-    ps = ps+   0.00160            * math.sin (q+2.0*d-l) 
-    ps = ps-   0.00130            * math.sin (q-2.0*d+l) 
-    ps = ps-   0.00100            * math.sin (q+2.0*d+2.0*f-l) 
-    ps = ps-   0.00070            * math.sin (l+m-2.0*d) 
-    ps = ps+   0.00070            * math.sin (2.0*q+2.0*f+m) 
-    ps = ps-   0.00070            * math.sin (2.0*q+2.0*f-m) 
-    ps = ps-   0.00080            * math.sin (2.0*q+2.0*d+2.0*f+l) 
-    ps = ps+   0.00060            * math.sin (2.0*d+l) 
-    ps = ps+   0.00060            * math.sin (2.0*(q-d+f+l)) 
-    ps = ps-   0.00060            * math.sin (q+2.0*d) 
-    ps = ps-   0.00070            * math.sin (q+2.0*d+2.0*f) 
-    ps = ps+   0.00060            * math.sin (q-2.0*d+2.0*f+l) 
-    ps = ps-   0.00050            * math.sin (q-2.0*d) 
-    ps = ps+   0.00050            * math.sin (l-m) 
-    ps = ps-   0.00050            * math.sin (q+2.0*f+2.0*l) 
-    ps = ps-   0.00040            * math.sin (m-2.0*d) 
-    ps = ps+   0.00040            * math.sin (l-2.0*f) 
-    ps = ps-   0.00040            * math.sin (d) 
-    ps = ps-   0.00030            * math.sin (l+m) 
-    ps = ps+   0.00030            * math.sin (l+2.0*f) 
-    ps = ps-   0.00030            * math.sin (2.0*q+2.0*f-m+l) 
-    ps = ps-   0.00030            * math.sin (2.0*q+2.0*d+2.0*f-m-l) 
-    ps = ps-   0.00020            * math.sin (q-2.0*l) 
-    ps = ps-   0.00030            * math.sin (2.0*q+2.0*f+3.0*l) 
-    ps = ps-   0.00030            * math.sin (2.0*q+2.0*d+2.0*f-m) 
-    ps = ps+   0.00020            * math.sin (2.0*q+2.0*f+m+l) 
-    ps = ps-   0.00020            * math.sin (q-2.0*d+2.0*f-l) 
-    ps = ps+   0.00020            * math.sin (q+2.0*l) 
-    ps = ps-   0.00020            * math.sin (2.0*q+l) 
-    ps = ps+   0.00020            * math.sin (3.0*l) 
-    ps = ps+   0.00020            * math.sin (2.0*q+d+2.0*f) 
-    ps = ps+   0.00010            * math.sin (2.0*q-l) 
-    ps = ps-   0.00010            * math.sin (l-4.0*d) 
-    ps = ps+   0.00010            * math.sin (2.0*(q+d+f-l)) 
-    ps = ps-   0.00020            * math.sin (2.0*q+4.0*d+2.0*f-l) 
-    ps = ps-   0.00010            * math.sin (2.0*l-4.0*d) 
-    ps = ps+   0.00010            * math.sin (2.0*q-2.0*d+2.0*f+m+l) 
-    ps = ps-   0.00010            * math.sin (q+2.0*d+2.0*f+l) 
-    ps = ps-   0.00010            * math.sin (2.0*q+4.0*d+2.0*f-2.0*l) 
-    ps = ps+   0.00010            * math.sin (2.0*q+4.0*f-l) 
-    ps = ps+   0.00010            * math.sin (l-m-2.0*d) 
-    ps = ps+   0.00010            * math.sin (q-2.0*d+2.0*f+2.0*l) 
-    ps = ps-   0.00010            * math.sin (2.0*(q+d+f+l)) 
-    ps = ps-   0.00010            * math.sin (q+2.0*d+l) 
-    ps = ps+   0.00010            * math.sin (2.0*q-2.0*d+4.0*f) 
-    ps = ps+   0.00010            * math.sin (2.0*q-2.0*d+2.0*f+3.0*l) 
-    ps = ps-   0.00010            * math.sin (l+2.0*f-2.0*d) 
-    ps = ps+   0.00010            * math.sin (q+2.0*f+m) 
-    ps = ps+   0.00010            * math.sin (q+2.0*d-m-l) 
-    ps = ps-   0.00010            * math.sin (q-2.0*f) 
-    ps = ps-   0.00010            * math.sin (2.0*q-d+2.0*f) 
-    ps = ps-   0.00010            * math.sin (2.0*d+m) 
-    ps = ps-   0.00010            * math.sin (l-2.0*f-2.0*d) 
-    ps = ps-   0.00010            * math.sin (q+2.0*f-m) 
-    ps = ps-   0.00010            * math.sin (q-2.0*d+m+l) 
-    ps = ps-   0.00010            * math.sin (l-2.0*f+2.0*d) 
-    ps = ps+   0.00010            * math.sin (2.0*(l+d)) 
-    ps = ps-   0.00010            * math.sin (2.0*q+4.0*d+2.0*f) 
-    ps = ps+   0.00010            * math.sin (d+m) 
+    ps =   -(  0.22740+0.000020*t)* sin (2.0*(q+f)) 
+    ps = ps+(  0.07120+0.000010*t)* sin (l) 
+    ps = ps-(  0.03860+0.000040*t)* sin (q+2.0*f) 
+    ps = ps-   0.03010            * sin (2.0*q+2.0*f+l) 
+    ps = ps-   0.01580            * sin (l-2.0*d) 
+    ps = ps+   0.01230            * sin (2.0*q+2.0*f-l) 
+    ps = ps+   0.00630            * sin (2.0*d) 
+    ps = ps+(  0.00630+0.000010*t)* sin (q+l) 
+    ps = ps-(  0.00580+0.000010*t)* sin (q-l) 
+    ps = ps-   0.00590            * sin (2.0*q+2.0*d+2.0*f-l) 
+    ps = ps-   0.00510            * sin (q+2.0*f+l) 
+    ps = ps-   0.00380            * sin (2.0*(q+d+f)) 
+    ps = ps+   0.00290            * sin (2.0*l) 
+    ps = ps+   0.00290            * sin (2.0*q-2.0*d+2.0*f+l) 
+    ps = ps-   0.00310            * sin (2.0*(q+f+l)) 
+    ps = ps+   0.00260            * sin (2.0*f) 
+    ps = ps+   0.00210            * sin (q+2.0*f-l) 
+    ps = ps+   0.00160            * sin (q+2.0*d-l) 
+    ps = ps-   0.00130            * sin (q-2.0*d+l) 
+    ps = ps-   0.00100            * sin (q+2.0*d+2.0*f-l) 
+    ps = ps-   0.00070            * sin (l+m-2.0*d) 
+    ps = ps+   0.00070            * sin (2.0*q+2.0*f+m) 
+    ps = ps-   0.00070            * sin (2.0*q+2.0*f-m) 
+    ps = ps-   0.00080            * sin (2.0*q+2.0*d+2.0*f+l) 
+    ps = ps+   0.00060            * sin (2.0*d+l) 
+    ps = ps+   0.00060            * sin (2.0*(q-d+f+l)) 
+    ps = ps-   0.00060            * sin (q+2.0*d) 
+    ps = ps-   0.00070            * sin (q+2.0*d+2.0*f) 
+    ps = ps+   0.00060            * sin (q-2.0*d+2.0*f+l) 
+    ps = ps-   0.00050            * sin (q-2.0*d) 
+    ps = ps+   0.00050            * sin (l-m) 
+    ps = ps-   0.00050            * sin (q+2.0*f+2.0*l) 
+    ps = ps-   0.00040            * sin (m-2.0*d) 
+    ps = ps+   0.00040            * sin (l-2.0*f) 
+    ps = ps-   0.00040            * sin (d) 
+    ps = ps-   0.00030            * sin (l+m) 
+    ps = ps+   0.00030            * sin (l+2.0*f) 
+    ps = ps-   0.00030            * sin (2.0*q+2.0*f-m+l) 
+    ps = ps-   0.00030            * sin (2.0*q+2.0*d+2.0*f-m-l) 
+    ps = ps-   0.00020            * sin (q-2.0*l) 
+    ps = ps-   0.00030            * sin (2.0*q+2.0*f+3.0*l) 
+    ps = ps-   0.00030            * sin (2.0*q+2.0*d+2.0*f-m) 
+    ps = ps+   0.00020            * sin (2.0*q+2.0*f+m+l) 
+    ps = ps-   0.00020            * sin (q-2.0*d+2.0*f-l) 
+    ps = ps+   0.00020            * sin (q+2.0*l) 
+    ps = ps-   0.00020            * sin (2.0*q+l) 
+    ps = ps+   0.00020            * sin (3.0*l) 
+    ps = ps+   0.00020            * sin (2.0*q+d+2.0*f) 
+    ps = ps+   0.00010            * sin (2.0*q-l) 
+    ps = ps-   0.00010            * sin (l-4.0*d) 
+    ps = ps+   0.00010            * sin (2.0*(q+d+f-l)) 
+    ps = ps-   0.00020            * sin (2.0*q+4.0*d+2.0*f-l) 
+    ps = ps-   0.00010            * sin (2.0*l-4.0*d) 
+    ps = ps+   0.00010            * sin (2.0*q-2.0*d+2.0*f+m+l) 
+    ps = ps-   0.00010            * sin (q+2.0*d+2.0*f+l) 
+    ps = ps-   0.00010            * sin (2.0*q+4.0*d+2.0*f-2.0*l) 
+    ps = ps+   0.00010            * sin (2.0*q+4.0*f-l) 
+    ps = ps+   0.00010            * sin (l-m-2.0*d) 
+    ps = ps+   0.00010            * sin (q-2.0*d+2.0*f+2.0*l) 
+    ps = ps-   0.00010            * sin (2.0*(q+d+f+l)) 
+    ps = ps-   0.00010            * sin (q+2.0*d+l) 
+    ps = ps+   0.00010            * sin (2.0*q-2.0*d+4.0*f) 
+    ps = ps+   0.00010            * sin (2.0*q-2.0*d+2.0*f+3.0*l) 
+    ps = ps-   0.00010            * sin (l+2.0*f-2.0*d) 
+    ps = ps+   0.00010            * sin (q+2.0*f+m) 
+    ps = ps+   0.00010            * sin (q+2.0*d-m-l) 
+    ps = ps-   0.00010            * sin (q-2.0*f) 
+    ps = ps-   0.00010            * sin (2.0*q-d+2.0*f) 
+    ps = ps-   0.00010            * sin (2.0*d+m) 
+    ps = ps-   0.00010            * sin (l-2.0*f-2.0*d) 
+    ps = ps-   0.00010            * sin (q+2.0*f-m) 
+    ps = ps-   0.00010            * sin (q-2.0*d+m+l) 
+    ps = ps-   0.00010            * sin (l-2.0*f+2.0*d) 
+    ps = ps+   0.00010            * sin (2.0*(l+d)) 
+    ps = ps-   0.00010            * sin (2.0*q+4.0*d+2.0*f) 
+    ps = ps+   0.00010            * sin (d+m) 
     
-    s0 = sm+(pl+ps)/15.0* math.cos(e) 
+    s0 = sm+(pl+ps)/15.0* cos(e) 
 
-    s_hour = math.floor(s0/3600) 
-    s_min = math.floor((s0-s_hour*3600)/60) 
-    s_sec = math.floor((s0-s_hour*3600-s_min*60)*10000)/10000
+    s_hour = floor(s0/3600) 
+    s_min = floor((s0-s_hour*3600)/60) 
+    s_sec = floor((s0-s_hour*3600-s_min*60)*10000)/10000
     
     return (s_hour, s_min, s_sec)
 
-class Telescope:
-    latitude = dms_to_d(57, 2, 12.1) #deg
-    longitude = dms_to_d(59, 32, 50.18) #deg
-    v_max = 6 # deg/s - максимальная скорость вращения телескопа по осям
-    
-    def __init__(self, alt = 15, az = 180, mode = 'A'):
-        self.__alt = alt
-        self.__az = az
-        self.__mode = mode
+class Telescope(QObject):
+    _latitude = dms_to_d(57, 2, 12.1) #deg
+    _longitude = dms_to_d(59, 32, 50.18) #deg
+    _v_max = 6 # deg/s - максимальная скорость вращения телескопа по осям
+
+    def __init__(self, parent=None):
+        self.__alt = 15
+        self.__az = 180
+        self.__ra = 0
+        self.__dec = 0
+        self.__mode = 'A'
     
     @property    
     def alt(self):
@@ -246,7 +249,64 @@ class Telescope:
             self.__mode = 'B'
         else:
             raise ValueError   #####error
-            
+
+    @property
+    def ra(self) -> float:
+        return self.__ra
+
+    @ra.setter
+    def ra(self, right_ascension: float):
+        self.__ra = right_ascension
+
+    @property
+    def dec(self) -> float:
+        return self.__dec
+
+    @dec.setter
+    def dec(self, declination: float):
+        self.__dec = declination
+
+    def date(self):
+        return time.localtime(time.time())
+
+    def cont(self, lock: Lock, ra: float, dec: float):
+        self.__ra = ra
+        self.__dec = dec
+        if lock.acquire(block=False) == True:
+            lock.release()
+
+    def running(self, lock: Lock):
+        while True:
+            log.debug("Lock movement thread")
+            lock.acquire()
+            log.debug("Unlock movement thread")
+            # Read parameters to local variables to exclude race conditions
+            date = self.date()
+            S_0 = calculate_S0(date)
+            S_0 = dms_to_d(S_0[0], S_0[1], S_0[2])
+            T = dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
+            s = calculate_s(S_0, T)
+            star = Star(self.ra(), self.dec())
+            star_h, star_A = star.eq_to_hor(s)
+
+            delta_h = star_h - self.alt
+            delta_A = star_A - self.az
+
+            # Set new coordinates depending on current time
+            if abs(delta_h) <= self._v_max and abs(delta_A) <= self._v_max:
+                self.alt = star_h
+                self.az = star_A
+            elif abs(delta_h) <= self._v_max and abs(delta_A) > self._v_max:
+                self.alt = star_h
+                self.az = self.az + sign(delta_A) * self._v_max
+            elif abs(delta_h) > self._v_max and abs(delta_A) <= self._v_max:
+                self.alt = self.alt + sign(delta_h) * self._v_max
+                self.az = star_A
+            elif abs(delta_h) > self._v_max and abs(delta_A) > self._v_max:
+                self.alt = self.alt + sign(delta_h) * self._v_max
+                self.az = self.az + sign(delta_A) * self._v_max
+
+            log.debug("Set new parameters | alt: {0} | az: {1}".format(self.alt, self.az))
     
     #считает прямое восхождение и склонение точки (h, A) в момент звездного времени s
     def hor_to_eq(self, s):
@@ -389,9 +449,8 @@ class Star:
     longitude = dms_to_d(59, 32, 50.18) #deg
         
     def __init__(self, ra = 0, dec = 0):        
-        self.ra = ra #deg        
-        self.dec = dec #deg
-                      
+        self.__ra = ra #deg        
+        self.__dec = dec #deg
                 
     def eq_to_hor(self, s):        
         phi = radians(self.latitude)
