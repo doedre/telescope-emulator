@@ -1,23 +1,29 @@
 import sys
-from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QTabWidget
-from PyQt5.QtWidgets import QGridLayout, QLabel, QMessageBox, QRadioButton
-from PyQt5.QtWidgets import QPushButton, QLineEdit, QVBoxLayout, QComboBox
-from PyQt5.QtWidgets import QFileDialog
-from PyQt5.QtGui import QPixmap
+from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QTabWidget
+from PySide6.QtWidgets import QGridLayout, QLabel, QMessageBox, QRadioButton
+from PySide6.QtWidgets import QPushButton, QLineEdit, QVBoxLayout, QComboBox
+from PySide6.QtWidgets import QFileDialog
+from PySide6.QtGui import QPixmap
 from numpy import loadtxt
 
 class Interface(QWidget):
 
+    moveButtonClicked = Signal(float, float)
+    parkButtonClicked = Signal()
+
     def __init__(self):
         super().__init__()
-        QMainWindow.__init__(self)
         #self.setWindowIcon(QIcon("Icon.png"))
         self.setWindowTitle("TEI: Telescope Emulator Interface")
         self.setGeometry(300, 300, 1500, 1000)
 
         #Creating 2 tabs: iron for telescope, silver for error tests
         Tabs = QTabWidget()
-        self.create_tab(Tabs, FirstTab(), "Telescope")
+        tabs = FirstTab()
+        self.create_tab(Tabs, tabs, "Telescope")
+        tabs.moveButtonClicked.connect(self.moveButtonClicked)
+        tabs.parkButtonClicked.connect(self.parkButtonClicked)
         #self.create_tab(Tabs, SecondTab(), "Errors scenarios")
 
         Layout = QGridLayout()
@@ -131,7 +137,10 @@ class FirstTab(QWidget):
         Layout.addLayout(Obs_layout, 1, 0)
         Layout.addLayout(But_layout, 1, 1)
         self.setLayout(Layout)
-        
+
+    moveButtonClicked = Signal(float, float)
+    parkButtonClicked = Signal()
+
     #Methods
     #Methods for showing current task after clicking buttons. These methods also might contain target frame pop-out processes
     def Click_start(self):
@@ -145,6 +154,7 @@ class FirstTab(QWidget):
     def Click_park(self):
         Info = "Current task: Parking" + "\nGuidance mode: " + str(self.Combo_guide.currentText())
         self.Current.setText(Info)
+        self.parkButtonClicked.emit()
 
     def Click_focus(self):
         Info = "Current task:\nFocusing"
@@ -156,6 +166,7 @@ class FirstTab(QWidget):
         #Need current telescope coordinates. Add them here
         #Info += "Current coordinates: " + 
         self.Current.setText(Info)
+        self.moveButtonClicked.emit(float(self.Field_RA.text()), float(self.Field_Dec.text()))
 
     def Get_focus(self):
         return self.Focus
@@ -192,13 +203,3 @@ class FirstTab(QWidget):
         data_RA, data_Dec = loadtxt(filepath, usecols = (0, 1), unpack = True)
         self.Field_RA.setText(str(data_RA[0]))
         self.Field_Dec.setText(str(data_Dec[0]))
-
-
-
-### Main Application ###
-
-
-app = QApplication(sys.argv)
-main = Interface()
-main.show()
-sys.exit(app.exec())

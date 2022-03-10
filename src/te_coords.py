@@ -238,6 +238,7 @@ class Telescope(QObject):
         self.__dec = 0
         self.__mode = 'A'
         self.__stop_thread = False
+        self.__is_parked = True
 
     telescopeMoved = Signal(float, float)
     coordinatesError = Signal(str)
@@ -300,7 +301,7 @@ class Telescope(QObject):
     @dec.setter
     def dec(self, declination: float):
         self.__dec = declination
-    
+
     def stop_thread(self, lock: Lock):
         self.__stop_thread = True
         if lock.locked():
@@ -322,6 +323,21 @@ class Telescope(QObject):
             log.debug("Unlock movement thread")
             if self.__stop_thread == True:
                 break
+
+            if self.__is_parked == True:
+                log.debug("Parking telescope")
+                d_A = 180 - self.az
+                d_h = 15 - self.alt
+                if abs(d_A) > self._v_max:
+                    self.az += np.sign(d_A) * self._v_max
+                    d_A = 180 - self.az
+                if abs(d_h) > self._v_max:
+                    self.alt += np.sign(d_h) * self._v_max
+                    d_h = 15 - self.alt
+
+                log.debug("Set new parameters | alt: {0} | az: {1}".format(self.alt, self.az))
+                self.telescopeMoved.emit(self.alt, self.az)
+                continue
 
             # Read parameters to local variables to exclude race conditions
             date = self.date()
@@ -350,7 +366,24 @@ class Telescope(QObject):
                 self.az = self.az + sign(delta_A) * self._v_max
 
             log.debug("Set new parameters | alt: {0} | az: {1}".format(self.alt, self.az))
+            self.telescopeMoved.emit(self.alt, self.az)
+
+    def worker(self, lock: Lock):
+        while self.__stop_thread == False:
+            self.proceed_movement(lock, self.__ra, self.__dec)
+            time.sleep(1)
+    @Slot()
+    def park_telescope(self):
+        log.info("Start to park telescope")
+        self.__is_parked = True
     
+    @Slot(float, float)
+    def set_star_coords(self, ra: float, dec: float):
+        log.info("Moving to {0} {1}".format(ra, dec))
+        self.__is_parked = False
+        self.__ra = ra
+        self.__dec = dec
+
     #считает прямое восхождение и склонение точки (h, A) в момент звездного времени s
     def hor_to_eq(self, s):
         phi = radians(self.latitude)
