@@ -11,6 +11,7 @@ class Interface(QWidget):
 
     moveButtonClicked = Signal(float, float)
     parkButtonClicked = Signal()
+    startButtonClicked = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -24,6 +25,7 @@ class Interface(QWidget):
         self.create_tab(Tabs, tabs, "Telescope")
         tabs.moveButtonClicked.connect(self.moveButtonClicked)
         tabs.parkButtonClicked.connect(self.parkButtonClicked)
+        tabs.startButtonClicked.connect(self.startButtonClicked)
         #self.create_tab(Tabs, SecondTab(), "Errors scenarios")
 
         Layout = QGridLayout()
@@ -140,6 +142,7 @@ class FirstTab(QWidget):
 
     moveButtonClicked = Signal(float, float)
     parkButtonClicked = Signal()
+    startButtonClicked = Signal(str)
 
     #Methods
     #Methods for showing current task after clicking buttons. These methods also might contain target frame pop-out processes
@@ -150,6 +153,7 @@ class FirstTab(QWidget):
        if str(self.Combo_calibration.currentText()) != "None":
            Info += "\nCalibration type: " + str(self.Combo_calibration.currentText())
        self.Current.setText(Info)
+       self.startButtonClicked.emit("./data/obj_image.fts")
 
     def Click_park(self):
         Info = "Current task: Parking" + "\nGuidance mode: " + str(self.Combo_guide.currentText())

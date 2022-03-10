@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication
 
 import te_coords as tcd
 import te_interface as tin
+import te_fits as tft
 import logger as log
 
 def main():
@@ -34,18 +35,24 @@ def main():
 
     # Initialize workers
     log.info("Initializing")
+    lock_coord = thr.Lock()
+    lock_plot = thr.Lock()
+
     telescope = tcd.Telescope()
     iface = tin.Interface()
+    fits = tft.FitsWorker(lock_plot)
     iface.moveButtonClicked.connect(telescope.set_star_coords)
     iface.parkButtonClicked.connect(telescope.park_telescope)
+    iface.startButtonClicked.connect(fits.set_fits_path)
 
-    lock_coord = thr.Lock()
     proc_coord = thr.Thread(target=telescope.running, args=(lock_coord,))
     worker_coord = thr.Thread(target=telescope.worker, args=(lock_coord,))
+    proc_plot = thr.Thread(target=fits.running, args=())
 
     # Start workers
     proc_coord.start()
     worker_coord.start()
+    proc_plot.start()
 
     # Start interface
     iface.show()
@@ -53,8 +60,10 @@ def main():
 
     # Join threads and exit
     telescope.stop_thread(lock_coord)
+    fits.stop_thread()
     proc_coord.join()
     worker_coord.join()
+    proc_plot.join()
 
 if __name__ == '__main__':
     sys.exit(main())

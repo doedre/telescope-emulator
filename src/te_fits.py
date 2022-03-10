@@ -1,9 +1,16 @@
-from PyQt5.QtCore import QSize
-from PyQt5.QtGui import QFont
-import PyQt5.QtWidgets as Qt
+from PySide6.QtCore import QObject, Signal, Slot, QSize
+from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QTabWidget
+from PySide6.QtWidgets import QGridLayout, QLabel, QMessageBox, QRadioButton
+from PySide6.QtWidgets import QPushButton, QLineEdit, QVBoxLayout, QComboBox
+from PySide6.QtWidgets import QFileDialog, QCheckBox, QSplitter
+from PySide6.QtGui import QPixmap, QFont
+
+
 import matplotlib.patches as patches
 import sys
 import numpy as np
+from threading import Lock
 from astropy.io import fits
 from matplotlib.backends.backend_qt5agg import FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
@@ -12,16 +19,15 @@ from matplotlib.colors import LogNorm
 
 from datetime import datetime
 import time
-from siderealtimeS0 import  calculate_S0
-from telescope import Star, calculate_s, dms_to_d
+import te_coords
+import logger as log
 
-
-class Plot_image(Qt.QMainWindow):
-    def __init__(self, ):
+class Plot_image(QMainWindow):
+    def __init__(self, filename):
         super().__init__()
         
         # Параметры (передаются извне, как - не знаю)
-        self.name_fits='s19450501.fts' # Название файла
+        self.name_fits=filename # Название файла
         #------
 
         # Размер окна
@@ -38,24 +44,24 @@ class Plot_image(Qt.QMainWindow):
         self.image()
         
         # Вывод координат        
-        self.label = Qt.QLabel()
+        self.label = QLabel()
         self.label.setFont(QFont('Arial', 10))
 
         # Отображение положения щели
-        self.checkbox=Qt.QCheckBox('Slit')
+        self.checkbox=QCheckBox('Slit')
         self.checkbox.setFont(QFont('Arial', 10))
         self.checkbox.stateChanged.connect(self.plot_slit)
 
         # Изменение цветовой схемы
-        self.label2 = Qt.QLabel('Min value') 
+        self.label2 = QLabel('Min value') 
         self.label2.setFont(QFont('Arial', 10))
-        self.input1 = Qt.QLineEdit()
+        self.input1 = QLineEdit()
         self.input1.textChanged.connect(self.min_max_value)
-        self.label3 = Qt.QLabel('Max value')
+        self.label3 = QLabel('Max value')
         self.label3.setFont(QFont('Arial', 10))
-        self.input2 = Qt.QLineEdit()
+        self.input2 = QLineEdit()
         self.input2.textChanged.connect(self.min_max_value)
-        self.checkbox2=Qt.QCheckBox('Log norm color')
+        self.checkbox2=QCheckBox('Log norm color')
         self.checkbox2.setFont(QFont('Arial', 10))
         self.checkbox2.stateChanged.connect(self.color_norm)
         
@@ -66,9 +72,9 @@ class Plot_image(Qt.QMainWindow):
         self.canvas2.draw()
         
         # Вывод на экран
-        layout = Qt.QVBoxLayout()
-        splitter = Qt.QSplitter()
-        splitter2 = Qt.QSplitter()
+        layout = QVBoxLayout()
+        splitter = QSplitter()
+        splitter2 = QSplitter()
         layout.addWidget(self.toolbar) # Панель инструментов
         layout.addWidget(self.canvas) # Основное изображение
         if self.h['MODE']=='Image': # Отображение щели
@@ -82,7 +88,7 @@ class Plot_image(Qt.QMainWindow):
         splitter2.addWidget(self.input2)        
         layout.addWidget(splitter2) 
         layout.addWidget(self.canvas2) # Дополнительное изображение
-        widget = Qt.QWidget()
+        widget = QWidget()
         widget.setLayout(layout)
         self.setCentralWidget(widget)       
 
@@ -254,7 +260,7 @@ def get_weather(weather, focus): # берём информацию о погод
 
 # считывание fits-файла, возвращает отдельно данные (которые потом нужно переделать под экспозицию) и header
 def read_fits(mode, file_type, exp_time):
-    name = file_type + mode + '.fts'
+    name = "./data/" + file_type + "_" + mode + '.fts'
     hdu = fits.open(name)
     image_data = hdu[0].data
     hdr = hdu[0].header
@@ -275,7 +281,7 @@ def change_fits_with_exposition(image_data, exp_time): #меняем fits под
 # image_data - из change_fits_with_exposition, header - из read_fits
 def write_fits(countfile, image_data, hdr, path, file_type, exp_time, star, sid_time, slit, weather, mode, focus):
     current_datetime = datetime.now()
-    name = 's' + conuntfile + '.fts'
+    name = 's' + countfile + '.fts'
     mirrtemp, dometemp, outtemp, wind, clouds, pressure, seeing = get_weather(weather, focus)
     hdu = fits.PrimaryHDU(data = image_data)
     hdu.header = hdr
@@ -298,7 +304,7 @@ def write_fits(countfile, image_data, hdr, path, file_type, exp_time, star, sid_
     hdu.header['DEC'] = '\'' + star.dec + '\''
     hdu.header['EPOCH'] = current_datetime.year + datetime.date.today().strftime("%j")/365
     hdu.header['Z'] = 90. - star.alt
-    hdu.header['A'] = star.
+    hdu.header['A'] = star.az
     hdu.header['SEEING'] = '\'' + seeing + '\''
     hdu.header['SLITWID'] = slit
     hdu.header['MIRRTEMP'] = mirrtemp
@@ -309,3 +315,32 @@ def write_fits(countfile, image_data, hdr, path, file_type, exp_time, star, sid_
     hdu.header['PRESSURE'] = pressure
     hdu.header['MODE'] = '\'' + mode + '\''
     hdu.writeto(name)
+
+class FitsWorker(QObject):
+    fitsWritten = Signal()
+
+    def __init__(self, lock: Lock):
+        self.__lock = lock
+        self.__stop_thread = False
+        self.__path = ""
+
+    def running(self):
+        while self.__stop_thread == False:
+            self.__lock.acquire(blocking=True)
+            time.sleep(3)
+            if self.__stop_thread == True:
+                break
+            path = self.__path
+            window = Plot_image(path)
+            window.show()
+
+    @Slot(str)
+    def set_fits_path(self, path: str):
+        log.info("Got path to the fits file '{0}'".format(path))
+        self.__path = path
+        self.__lock.release()
+
+    def stop_thread(self):
+        self.__stop_thread = True
+        self.__lock.release()
+
