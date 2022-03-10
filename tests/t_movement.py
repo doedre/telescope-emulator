@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 
-import multiprocessing as mp
+import threading as thr
 import argparse
 import sys
+import time
 sys.path.append("../src/")
 # Write your imports from `src/` folder below
 import te_coords as tcd
@@ -25,19 +26,19 @@ def main():
 
     log.setup_logger(log_level, log_path)
 
-    #
-    # Write your tests below
-    #
-
-    lock = mp.Lock()
+    lock = thr.Lock()
     tel = tcd.Telescope()
     star = tcd.Star(20, 30)
     log.info("Initializing")
-    proc = mp.Process(target=tel.running, args=(lock,))
+    proc = thr.Thread(target=tel.running, args=(lock,))
     proc.start()
-    for i in range(3):
+    time.sleep(3)
+    for i in range(9):
         log.debug("Iteration number {0}".format(i))
-        tel.cont(lock, 20, 30)
+        tel.proceed_movement(lock, 40, 50)
+        time.sleep(1)
+
+    tel.stop_thread(lock)
 
     proc.join()
 

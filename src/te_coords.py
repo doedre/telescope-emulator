@@ -1,5 +1,5 @@
 from PySide6.QtCore import QObject, Signal, Slot
-from multiprocessing import Process, Lock
+from threading import Thread, Lock
 
 from math import *
 from datetime import datetime
@@ -197,18 +197,51 @@ def calculate_S0(date):  #можно заменить date на (число, м�
     
     return (s_hour, s_min, s_sec)
 
+class Star:
+    latitude = dms_to_d(57, 2, 12.1) #deg
+    longitude = dms_to_d(59, 32, 50.18) #deg
+        
+    def __init__(self, ra = 0, dec = 0):        
+        self.__ra = ra #deg        
+        self.__dec = dec #deg
+                
+    def eq_to_hor(self, s):        
+        phi = radians(self.latitude)
+        delta = radians(self.__dec)
+        alpha = radians(self.__ra)
+        
+        t = radians(s * 15) - alpha
+        if t < 0:
+            t += 2 * pi
+            
+        h = asin(sin(phi)*sin(delta)+cos(phi)*cos(delta)*cos(t))
+        
+        A = atan2(cos(delta)*sin(t), -cos(phi)*sin(delta)+sin(phi)*cos(delta)*cos(t))
+        if A < 0:
+            A += 2 * pi
+        
+        self.alt = degrees(h)
+        self.az = degrees(A)
+        
+        return (self.alt, self.az)
+ 
 class Telescope(QObject):
     _latitude = dms_to_d(57, 2, 12.1) #deg
     _longitude = dms_to_d(59, 32, 50.18) #deg
     _v_max = 6 # deg/s - максимальная скорость вращения телескопа по осям
 
     def __init__(self, parent=None):
-        self.__alt = 15
+        super().__init__()
+        self.__alt = 25
         self.__az = 180
         self.__ra = 0
         self.__dec = 0
         self.__mode = 'A'
-    
+        self.__stop_thread = False
+
+    telescopeMoved = Signal(float, float)
+    coordinatesError = Signal(str)
+
     @property    
     def alt(self):
         return self.__alt
@@ -218,7 +251,8 @@ class Telescope(QObject):
         if 15 <= h <= 85:
             self.__alt = h
         else:
-            raise ValueError  #####error
+            self.coordinatesError.emit("'h' = {0} is out of range".format(h))
+            log.warn("'h' = {0} is out of range".format(h))
     
     @property        
     def az(self):
@@ -231,11 +265,14 @@ class Telescope(QObject):
         elif (70 <= A < 360 or 0 <= A <=10) and self.__mode == 'B':
             self.__az = A
         elif 10 < A < 70 and self.__mode == 'B':
-            raise ValueError #print ("ModeError") #####error
+            self.coordinatesError.emit("'A' = {0} is out of range".format(A))
+            log.warn("'A' = {0} is out of range".format(A))
         elif 300 < A < 360 and self.__mode == 'A':
-            raise ValueError #print ("ModeError") #####error
+            self.coordinatesError.emit("'A' = {0} is out of range".format(A))
+            log.warn("'A' = {0} is out of range".format(A))
         else:
-            raise ValueError  #####error
+            self.coordinatesError.emit("'A' = {0} is out of range".format(A))
+            log.warn("'A' = {0} is out of range".format(A))
             
     @property        
     def mode(self):
@@ -247,8 +284,6 @@ class Telescope(QObject):
             self.__mode = 'A'
         elif string == 'B':
             self.__mode = 'B'
-        else:
-            raise ValueError   #####error
 
     @property
     def ra(self) -> float:
@@ -265,28 +300,36 @@ class Telescope(QObject):
     @dec.setter
     def dec(self, declination: float):
         self.__dec = declination
+    
+    def stop_thread(self, lock: Lock):
+        self.__stop_thread = True
+        if lock.locked():
+            lock.release()
 
     def date(self):
         return time.localtime(time.time())
 
-    def cont(self, lock: Lock, ra: float, dec: float):
+    def proceed_movement(self, lock: Lock, ra: float, dec: float):
         self.__ra = ra
         self.__dec = dec
-        if lock.acquire(block=False) == True:
+        if lock.locked():
             lock.release()
 
     def running(self, lock: Lock):
-        while True:
+        while self.__stop_thread == False:
             log.debug("Lock movement thread")
-            lock.acquire()
+            lock.acquire(blocking=True)
             log.debug("Unlock movement thread")
+            if self.__stop_thread == True:
+                break
+
             # Read parameters to local variables to exclude race conditions
             date = self.date()
             S_0 = calculate_S0(date)
             S_0 = dms_to_d(S_0[0], S_0[1], S_0[2])
             T = dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
             s = calculate_s(S_0, T)
-            star = Star(self.ra(), self.dec())
+            star = Star(self.__ra, self.__dec)
             star_h, star_A = star.eq_to_hor(s)
 
             delta_h = star_h - self.alt
@@ -440,36 +483,3 @@ class Telescope(QObject):
         self.alt = 15
         #print(self.az, self.alt) ###debug
         time.sleep(1)
-                
-            
-    
-
-class Star:
-    latitude = dms_to_d(57, 2, 12.1) #deg
-    longitude = dms_to_d(59, 32, 50.18) #deg
-        
-    def __init__(self, ra = 0, dec = 0):        
-        self.__ra = ra #deg        
-        self.__dec = dec #deg
-                
-    def eq_to_hor(self, s):        
-        phi = radians(self.latitude)
-        delta = radians(self.dec)
-        alpha = radians(self.ra)
-        
-        t = radians(s*15) - alpha
-        if t<0:
-            t+=2*pi
-            
-        h = asin(sin(phi)*sin(delta)+cos(phi)*cos(delta)*cos(t))
-        
-        A = atan2(cos(delta)*sin(t), -cos(phi)*sin(delta)+sin(phi)*cos(delta)*cos(t))
-        if A<0:
-            A+=2*pi
-        
-        self.alt = degrees(h)
-        self.az = degrees(A)
-        
-        return (self.alt, self.az)
-    
-    
