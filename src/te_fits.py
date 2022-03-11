@@ -6,7 +6,6 @@ from PySide6.QtWidgets import QPushButton, QLineEdit, QVBoxLayout, QComboBox
 from PySide6.QtWidgets import QFileDialog, QCheckBox, QSplitter
 from PySide6.QtGui import QPixmap, QFont
 
-
 import matplotlib.patches as patches
 import sys
 import numpy as np
@@ -19,7 +18,7 @@ from matplotlib.colors import LogNorm
 
 from datetime import datetime
 import time
-import te_coords
+import te_coords as tcd
 import logger as log
 
 class Plot_image(QMainWindow):
@@ -205,7 +204,7 @@ class Plot_image(QMainWindow):
         self.image()
 
 def get_weather(weather, focus): # берём информацию о погоде и сиинге в зависимости от условий и наличия автофокуса
-    file = np.genfromtxt('weather.txt', skip_header=1)
+    file = np.genfromtxt('data/weather.txt', skip_header=1)
     if focus==False:
         if weather=='bad':
             mirrtemp = file[0, 1]
@@ -261,10 +260,10 @@ def get_weather(weather, focus): # берём информацию о погод
 # считывание fits-файла, возвращает отдельно данные (которые потом нужно переделать под экспозицию) и header
 def read_fits(mode, file_type, exp_time):
     name = "./data/" + file_type + "_" + mode + '.fts'
+    log.info("Opening `{0}` file".format(name))
     hdu = fits.open(name)
     image_data = hdu[0].data
     hdr = hdu[0].header
-    time.sleep(exp_time*0.01)
     return image_data, hdr
 
 def change_fits_with_exposition(image_data, exp_time): #меняем fits под экспозицию
@@ -281,13 +280,21 @@ def change_fits_with_exposition(image_data, exp_time): #меняем fits под
 # image_data - из change_fits_with_exposition, header - из read_fits
 def write_fits(countfile, image_data, hdr, path, file_type, exp_time, star, sid_time, slit, weather, mode, focus):
     current_datetime = datetime.now()
-    name = 's' + countfile + '.fts'
+    date = time.localtime(time.time())
+    S_0 = tcd.calculate_S0(date)
+    S_0 = tcd.dms_to_d(S_0[0], S_0[1], S_0[2])
+    T = tcd.dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
+    s = tcd.calculate_s(S_0, T)
+
+    alt, az = star.eq_to_hor(s)
+    name = 'data/s' + countfile + '.fts'
+    log.info("Write new fits into `{0}`".format(name))
     mirrtemp, dometemp, outtemp, wind, clouds, pressure, seeing = get_weather(weather, focus)
     hdu = fits.PrimaryHDU(data = image_data)
     hdu.header = hdr
-    hdu.header['DATE'] = '\'' + current_datetime.date() + '\''
-    hdu.header['DATE-OBS'] = '\'' + current_datetime.year + '/' + current_datetime.day + '/' + current_datetime.month +'\''
-    hdu.header['TIME-OBS'] = '\'' + current_datetime.time() +'\''
+    hdu.header['DATE'] = '\'' + str(current_datetime.date()) + '\''
+    hdu.header['DATE-OBS'] = '\'' + str(current_datetime.year) + '/' + str(current_datetime.day) + '/' + str(current_datetime.month) +'\''
+    hdu.header['TIME-OBS'] = '\'' + str(current_datetime.time()) +'\''
     hdu.header['OBSERVER'] = '\'' + 'Observer' +'\''
     hdu.header['OBJECT'] = '\'' + 'Object' +'\''
     hdu.header['PROG-ID'] = '\'' + 'Programm ID' +'\''
@@ -298,14 +305,14 @@ def write_fits(countfile, image_data, hdr, path, file_type, exp_time, star, sid_
     hdu.header['IMAGETYP'] = '\'' + file_type +'\''
     hdu.header['START'] = hdu.header['TIME-OBS']
     hdu.header['EXPTIME'] = exp_time
-    hdu.header['UT'] = '\'' + datetime.utcnow() + '\''
-    hdu.header['ST'] = '\'' + sid_time + '\''
-    hdu.header['RA'] = '\'' + star.ra + '\''
-    hdu.header['DEC'] = '\'' + star.dec + '\''
-    hdu.header['EPOCH'] = current_datetime.year + datetime.date.today().strftime("%j")/365
-    hdu.header['Z'] = 90. - star.alt
-    hdu.header['A'] = star.az
-    hdu.header['SEEING'] = '\'' + seeing + '\''
+    hdu.header['UT'] = '\'' + str(datetime.utcnow()) + '\''
+    hdu.header['ST'] = '\'' + str(sid_time) + '\''
+    hdu.header['RA'] = '\'' + str(star._ra) + '\''
+    hdu.header['DEC'] = '\'' + str(star._dec) + '\''
+    hdu.header['EPOCH'] = str(current_datetime.year)
+    hdu.header['Z'] = 90. - alt
+    hdu.header['A'] = az
+    hdu.header['SEEING'] = '\'' + str(seeing) + '\''
     hdu.header['SLITWID'] = slit
     hdu.header['MIRRTEMP'] = mirrtemp
     hdu.header['DOMETEMP'] = dometemp
@@ -322,19 +329,71 @@ class FitsWorker(QObject):
     def __init__(self, lock: Lock):
         self.__lock = lock
         self.__stop_thread = False
-        self.__path = ""
+        self.__exp_time = 100
+        self.__mode = ""
+        self.__file_type = ""
+        self.__ra = 0
+        self.__dec = 0
+        self.__weather = ""
+        self.__slit = 0
 
     def running(self):
         while self.__stop_thread == False:
             self.__lock.acquire(blocking=True)
-            time.sleep(3)
+            time.sleep(1)
             if self.__stop_thread == True:
                 break
 
-    @Slot(str)
-    def set_fits_path(self, path: str):
-        log.info("Got path to the fits file '{0}'".format(path))
-        self.__path = path
+            mode = self.__mode
+            exp_time = self.__exp_time
+            file_type = self.__file_type
+            ra = self.__ra
+            dec = self.__dec
+            weather = self.__weather
+            slit = self.__slit
+            if mode == "":
+                continue
+
+            image_data, hdr = read_fits(mode, file_type, exp_time)
+            image_data = change_fits_with_exposition(image_data, exp_time)
+
+            date = time.localtime(time.time())
+            s_0 = tcd.calculate_S0(date)
+            s_0 = tcd.dms_to_d(s_0[0], s_0[1], s_0[2])
+            t = tcd.dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
+            sid_time = tcd.calculate_s(s_0, t)
+
+            countfile = "1" #название файла
+            star = tcd.Star(ra, dec)
+            focus = True
+            
+            write_fits(countfile, image_data, hdr, None, file_type, exp_time, star, sid_time, slit, weather, mode, focus)
+
+
+    @Slot(int, str, str, float, float, str, float)
+    def set_fits_parameters(self, exposition: int, mode: str, file_type: str, ra: float, dec: float, weather: str, slit: float):
+        log.info("Setting up observation | exposition: {0}; mode: {1}; type: {2}".format(exposition, mode, file_type))
+        self.__exp_time = exposition
+
+        if mode == "Imaging":
+            self.__mode = "image"
+        elif mode == "Spectrum":
+            self.__mode = "spectra"
+
+        if file_type == "None":
+            self.__file_type = "obj"
+        elif file_type == "Calibration lamp":
+            self.__file_type = "neon"
+        elif file_type == "Dark frame":
+            self.__file_type = "dark"
+        elif file_type == "Flat field":
+            self.__file_type = "flat"
+        
+        self.__ra = ra
+        self.__dec = dec
+        self.__weather = weather.lower()
+        self.__slit = slit
+
         if self.__lock.locked():
             self.__lock.release()
 

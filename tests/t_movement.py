@@ -357,10 +357,10 @@ def main():
     #записываем новый фитс
     #нужно текущее звездное время:
     date = time.localtime(time.time())
-    S_0 = calculate_S0(date)
-    S_0 = dms_to_d(S_0[0], S_0[1], S_0[2])
-    T = dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
-    sid_time = calculate_s(S_0, T)
+    s_0 = calculate_s0(date)
+    s_0 = dms_to_d(s_0[0], s_0[1], s_0[2])
+    t = dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
+    sid_time = calculate_s(s_0, t)
     
     #другие параметры из интерфейса(?)
     countfile = "1" #название файла

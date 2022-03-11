@@ -240,7 +240,7 @@ class Telescope(QObject):
         self.__stop_thread = False
         self.__is_parked = True
 
-    telescopeMoved = Signal(float, float)
+    telescopeMoved = Signal(float, float, float, float)
     coordinatesError = Signal(str)
 
     @property    
@@ -324,6 +324,13 @@ class Telescope(QObject):
             if self.__stop_thread == True:
                 break
 
+            # Read parameters to local variables to exclude race conditions
+            date = self.date()
+            S_0 = calculate_S0(date)
+            S_0 = dms_to_d(S_0[0], S_0[1], S_0[2])
+            T = dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
+            s = calculate_s(S_0, T)
+
             if self.__is_parked == True:
                 log.debug("Parking telescope")
                 d_A = 180 - self.az
@@ -336,15 +343,10 @@ class Telescope(QObject):
                     d_h = 15 - self.alt
 
                 log.debug("Set new parameters | alt: {0} | az: {1}".format(self.alt, self.az))
-                self.telescopeMoved.emit(self.alt, self.az)
+                alpha, delta = self.hor_to_eq(s)
+                self.telescopeMoved.emit(self.alt, self.az, alpha, delta)
                 continue
 
-            # Read parameters to local variables to exclude race conditions
-            date = self.date()
-            S_0 = calculate_S0(date)
-            S_0 = dms_to_d(S_0[0], S_0[1], S_0[2])
-            T = dms_to_d(date.tm_hour, date.tm_min, date.tm_sec)
-            s = calculate_s(S_0, T)
             star = Star(self.__ra, self.__dec)
             star_h, star_A = star.eq_to_hor(s)
 
@@ -366,7 +368,8 @@ class Telescope(QObject):
                 self.az = self.az + sign(delta_A) * self._v_max
 
             log.debug("Set new parameters | alt: {0} | az: {1}".format(self.alt, self.az))
-            self.telescopeMoved.emit(self.alt, self.az)
+            alpha, delta = self.hor_to_eq(s)
+            self.telescopeMoved.emit(self.alt, self.az, alpha, delta)
 
     def worker(self, lock: Lock):
         while self.__stop_thread == False:
@@ -386,7 +389,7 @@ class Telescope(QObject):
 
     #считает прямое восхождение и склонение точки (h, A) в момент звездного времени s
     def hor_to_eq(self, s):
-        phi = radians(self.latitude)
+        phi = radians(self._latitude)
         h = radians(self.alt)
         A = radians(self.az)
 
@@ -400,10 +403,7 @@ class Telescope(QObject):
         if alpha<0:
             alpha+=2*pi
 
-        self.ra = degrees(alpha)  # 0 <= RA < 360 deg
-        self.dec = degrees(delta) # -90 <= DEC <= 90 deg
-        
-        return (self.ra, self.dec)
+        return (degrees(alpha), degrees(delta))
         
     
     #наведение на звезду, date - объект типа time.struct_time, время начала наведения (момент вызова функции)

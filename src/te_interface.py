@@ -13,8 +13,8 @@ class Interface(QWidget):
 
     moveButtonClicked = Signal(float, float)
     parkButtonClicked = Signal()
-    startButtonClicked = Signal(str)
-    telescopeMoved = Signal(float, float)
+    startButtonClicked = Signal(int, str, str, float, float, str, float)
+    telescopeMoved = Signal(float, float, float, float)
 
     def __init__(self):
         super().__init__()
@@ -30,7 +30,7 @@ class Interface(QWidget):
         tabs.parkButtonClicked.connect(self.parkButtonClicked)
         tabs.startButtonClicked.connect(self.startButtonClicked)
         self.telescopeMoved.connect(tabs.telescopeMoved)
-        self.create_tab(Tabs, tft.Plot_image("data/obj_image.fts"), "Guiding")
+#        self.create_tab(Tabs, tft.Plot_image("data/obj_image.fts"), "Guiding")
 
         Layout = QGridLayout()
         self.setLayout(Layout)
@@ -146,11 +146,11 @@ class FirstTab(QWidget):
 
     moveButtonClicked = Signal(float, float)
     parkButtonClicked = Signal()
-    startButtonClicked = Signal(str)
+    startButtonClicked = Signal(int, str, str, float, float, str, float)
     
-    @Slot(float, float)
-    def telescopeMoved(self, alt: float, az: float):
-        self.Current.setText("alt {0}, az {1}".format(alt, az))
+    @Slot(float, float, float, float)
+    def telescopeMoved(self, alt: float, az: float, ra: float, dec: float):
+        self.Current.setText("h: {0}\nA: {1}\nRA: {2}\nDEC: {3}".format(alt, az, ra, dec))
 
     #Methods
     #Methods for showing current task after clicking buttons. These methods also might contain target frame pop-out processes
@@ -161,7 +161,7 @@ class FirstTab(QWidget):
        if str(self.Combo_calibration.currentText()) != "None":
            Info += "\nCalibration type: " + str(self.Combo_calibration.currentText())
        self.Current.setText(Info)
-       self.startButtonClicked.emit("data/obj_image.fts")
+       self.startButtonClicked.emit(int(self.Field_exposure.text(), base=10), self.Combo_mode.currentText(), self.Combo_calibration.currentText(), float(self.Field_RA.text()), float(self.Field_Dec.text()), self.Combo_weather.currentText(), float(self.Field_slit.text()))
 
     def Click_park(self):
         Info = "Current task: Parking" + "\nGuidance mode: " + str(self.Combo_guide.currentText())

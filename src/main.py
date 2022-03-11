@@ -43,7 +43,7 @@ def main():
     fits = tft.FitsWorker(lock_plot)
     iface.moveButtonClicked.connect(telescope.set_star_coords)
     iface.parkButtonClicked.connect(telescope.park_telescope)
-    iface.startButtonClicked.connect(fits.set_fits_path)
+    iface.startButtonClicked.connect(fits.set_fits_parameters)
     telescope.telescopeMoved.connect(iface.telescopeMoved)
 
     proc_coord = thr.Thread(target=telescope.running, args=(lock_coord,))
