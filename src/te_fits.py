@@ -154,9 +154,9 @@ class Plot_image(QMainWindow):
         for i in range(len(self.Z[j])):
             self.X.append(i)
             self.Y.append(self.Z[j][i])
-        self.ax2.plot(self.X,self.Y,'k')
-        self.ax2.set_ylabel("value")
-        self.canvas2.draw()
+        #self.ax2.plot(self.X,self.Y,'k')
+        #self.ax2.set_ylabel("value")
+        #self.canvas2.draw()
         
     # Отображение координат на рисунке
     def format_coord(self,x, y):
@@ -271,7 +271,7 @@ def change_fits_with_exposition(image_data, exp_time): #меняем fits под
     tau = exp_time 
     image_data = image_data/900
     image_data = image_data*tau
-    image_data[np.where(data>20000)] = 200000
+    image_data[np.where(image_data>20000)] = 200000
 
     return image_data
 
@@ -330,17 +330,14 @@ class FitsWorker(QObject):
             time.sleep(3)
             if self.__stop_thread == True:
                 break
-            path = self.__path
-            window = Plot_image(path)
-            window.show()
 
     @Slot(str)
     def set_fits_path(self, path: str):
         log.info("Got path to the fits file '{0}'".format(path))
         self.__path = path
-        self.__lock.release()
+        if self.__lock.locked():
+            self.__lock.release()
 
     def stop_thread(self):
         self.__stop_thread = True
         self.__lock.release()
-

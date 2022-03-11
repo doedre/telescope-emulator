@@ -44,6 +44,7 @@ def main():
     iface.moveButtonClicked.connect(telescope.set_star_coords)
     iface.parkButtonClicked.connect(telescope.park_telescope)
     iface.startButtonClicked.connect(fits.set_fits_path)
+    telescope.telescopeMoved.connect(iface.telescopeMoved)
 
     proc_coord = thr.Thread(target=telescope.running, args=(lock_coord,))
     worker_coord = thr.Thread(target=telescope.worker, args=(lock_coord,))

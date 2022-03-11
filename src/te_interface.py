@@ -7,11 +7,14 @@ from PySide6.QtWidgets import QFileDialog
 from PySide6.QtGui import QPixmap
 from numpy import loadtxt
 
+import te_fits as tft
+
 class Interface(QWidget):
 
     moveButtonClicked = Signal(float, float)
     parkButtonClicked = Signal()
     startButtonClicked = Signal(str)
+    telescopeMoved = Signal(float, float)
 
     def __init__(self):
         super().__init__()
@@ -26,7 +29,8 @@ class Interface(QWidget):
         tabs.moveButtonClicked.connect(self.moveButtonClicked)
         tabs.parkButtonClicked.connect(self.parkButtonClicked)
         tabs.startButtonClicked.connect(self.startButtonClicked)
-        #self.create_tab(Tabs, SecondTab(), "Errors scenarios")
+        self.telescopeMoved.connect(tabs.telescopeMoved)
+        self.create_tab(Tabs, tft.Plot_image("data/obj_image.fts"), "Guiding")
 
         Layout = QGridLayout()
         self.setLayout(Layout)
@@ -143,6 +147,10 @@ class FirstTab(QWidget):
     moveButtonClicked = Signal(float, float)
     parkButtonClicked = Signal()
     startButtonClicked = Signal(str)
+    
+    @Slot(float, float)
+    def telescopeMoved(self, alt: float, az: float):
+        self.Current.setText("alt {0}, az {1}".format(alt, az))
 
     #Methods
     #Methods for showing current task after clicking buttons. These methods also might contain target frame pop-out processes
@@ -153,7 +161,7 @@ class FirstTab(QWidget):
        if str(self.Combo_calibration.currentText()) != "None":
            Info += "\nCalibration type: " + str(self.Combo_calibration.currentText())
        self.Current.setText(Info)
-       self.startButtonClicked.emit("./data/obj_image.fts")
+       self.startButtonClicked.emit("data/obj_image.fts")
 
     def Click_park(self):
         Info = "Current task: Parking" + "\nGuidance mode: " + str(self.Combo_guide.currentText())
