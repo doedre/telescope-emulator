@@ -202,13 +202,13 @@ class Star:
     longitude = dms_to_d(59, 32, 50.18) #deg
         
     def __init__(self, ra = 0, dec = 0):        
-        self.__ra = ra #deg        
-        self.__dec = dec #deg
+        self._ra = ra #deg        
+        self._dec = dec #deg
                 
     def eq_to_hor(self, s):        
         phi = radians(self.latitude)
-        delta = radians(self.__dec)
-        alpha = radians(self.__ra)
+        delta = radians(self._dec)
+        alpha = radians(self._ra)
         
         t = radians(s * 15) - alpha
         if t < 0:
