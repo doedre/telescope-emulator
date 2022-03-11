@@ -30,7 +30,7 @@ class Interface(QWidget):
         tabs.parkButtonClicked.connect(self.parkButtonClicked)
         tabs.startButtonClicked.connect(self.startButtonClicked)
         self.telescopeMoved.connect(tabs.telescopeMoved)
-#        self.create_tab(Tabs, tft.Plot_image("data/obj_image.fts"), "Guiding")
+        self.create_tab(Tabs, tft.Plot_image("data/obj_image.fts"), "Guiding")
 
         Layout = QGridLayout()
         self.setLayout(Layout)
